@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - sensor_backplane
+
+  inference_worker:
+    build:
+      context: .
+    command: ["python", "inference_worker/worker.py"]
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:9000/status || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - sensor_backplane
+
+  vision_api:
+    build:
+      context: .
+    command: ["python", "vision_api/app.py"]
+    env_file:
+      - .env
+    environment:
+      WORKER_URL: http://inference_worker:9000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - inference_worker
+    networks:
+      - edge_dmz
+      - sensor_backplane
+
+networks:
+  edge_dmz:
+    driver: bridge
+
+  sensor_backplane:
+    driver: bridge
+    internal: true
